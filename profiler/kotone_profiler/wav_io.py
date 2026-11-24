@@ -90,10 +90,7 @@ def _decode_pcm_numpy(raw: bytes, num_channels: int, bits_per_sample: int, audio
             "ERR_INVALID_WAV", f"Unsupported WAV format tag: 0x{audio_format:04x}", exit_code=1
         )
 
-    if num_channels > 1:
-        mono = data.reshape(num_frames, num_channels).mean(axis=1)
-    else:
-        mono = data
+    mono = data.reshape(num_frames, num_channels).mean(axis=1) if num_channels > 1 else data
     return np.ascontiguousarray(mono, dtype=np.float64)
 
 

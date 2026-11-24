@@ -162,10 +162,9 @@ def _run_static_audits() -> bool:
                 f"  [ERROR] Locale mismatch: ja-en={ja_keys - en_keys}, en-ja={en_keys - ja_keys}"
             )
             ok = False
-        obs_src = (
-            (REPO_ROOT / "plugin/src/obs/plugin_main.cpp").read_text(encoding="utf-8")
-            + (REPO_ROOT / "plugin/src/obs/kotone_filter.cpp").read_text(encoding="utf-8")
-        )
+        obs_src = (REPO_ROOT / "plugin/src/obs/plugin_main.cpp").read_text(encoding="utf-8") + (
+            REPO_ROOT / "plugin/src/obs/kotone_filter.cpp"
+        ).read_text(encoding="utf-8")
         used = set(re.findall(r'"(Kotone\.[A-Za-z0-9_.]+)"', obs_src))
         if used != ja_keys:
             print(
@@ -273,8 +272,7 @@ def cmd_lint(strict: bool) -> int:
             print("  [SKIP] clang-tidy skipped (compile_commands.json unavailable)")
     else:
         msg = (
-            "clang-tidy not found "
-            "(install via: winget install LLVM.LLVM / apt install clang-tidy)"
+            "clang-tidy not found (install via: winget install LLVM.LLVM / apt install clang-tidy)"
         )
         print(f"  [{'ERROR' if strict else 'SKIP'}] {msg}")
         if strict:

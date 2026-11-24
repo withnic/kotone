@@ -296,8 +296,7 @@ def analyze_audio(audio: WavAudio, *, use_numpy: bool = True) -> AnalysisResult:
         else:
             n_fft_frames = 1 + (len(voiced_samples) - FFT_SIZE) // fft_hop
             fft_frames = [
-                voiced_samples[k * fft_hop : k * fft_hop + FFT_SIZE]
-                for k in range(n_fft_frames)
+                voiced_samples[k * fft_hop : k * fft_hop + FFT_SIZE] for k in range(n_fft_frames)
             ]
 
         ltas_power = np.zeros(FFT_SIZE // 2 + 1, dtype=np.float64)

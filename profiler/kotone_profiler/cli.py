@@ -128,9 +128,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "analyze":
         input_path = Path(args.input)
-        profile_name = (
-            args.name if args.name is not None and args.name.strip() else input_path.stem
-        )
+        profile_name = args.name if args.name is not None and args.name.strip() else input_path.stem
         out_path = _resolve_output_path(input_path, profile_name, args.output, args.output_dir)
 
         try:
