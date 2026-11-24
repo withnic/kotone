@@ -1,0 +1,6 @@
+# 琴音 (kotone) - Codex CLI プロジェクト設定
+approval_policy = "never"
+sandbox_mode = "workspace-write"
+
+[sandbox_workspace_write]
+network_access = false

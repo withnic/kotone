@@ -1,0 +1,24 @@
+{
+  "context": {
+    "fileName": "AGENTS.md"
+  },
+  "tools": {
+    "exclude": [
+      "run_shell_command(git push*)",
+      "run_shell_command(git reset --hard*)",
+      "run_shell_command(rm -rf /*)"
+    ]
+  },
+  "hooks": {
+    "AfterAgent": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmake -B build -DKOTONE_BUILD_OBS_PLUGIN=OFF -DKOTONE_BUILD_TESTS=ON 1>&2 && cmake --build build --config Release 1>&2 && ctest --test-dir build --output-on-failure 1>&2 && (if [ -d profiler/tests ]; then python3 -m pytest profiler/tests 1>&2 || pytest profiler/tests 1>&2; fi) || exit 2"
+          }
+        ]
+      }
+    ]
+  }
+}

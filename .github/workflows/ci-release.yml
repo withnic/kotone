@@ -1,0 +1,282 @@
+name: CI & Release (Kotone OBS Plugin)
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - "v*"
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      obs_version:
+        description: "Target OBS Studio version tag for Windows SDK build"
+        required: false
+        default: "31.0.2"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    name: Test DSP Core & Profiler (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, ubuntu-24.04]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install clang-format (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format
+
+      - name: Install pytest and ruff
+        run: python -m pip install --upgrade pip pytest ruff
+
+      - name: Lint & format check (ruff, clang-format, static audits)
+        run: |
+          ruff check --config profiler/pyproject.toml profiler scripts
+          ruff format --check --config profiler/pyproject.toml profiler scripts
+          python scripts/check.py lint
+
+      - name: Configure and build C++ DSP core & tests
+        run: |
+          cmake -B build -DKOTONE_BUILD_OBS_PLUGIN=OFF -DKOTONE_BUILD_TESTS=ON
+          cmake --build build --config Release
+
+      - name: Run C++ unit tests
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Run Python profiler tests (pure stdlib mode, no numpy)
+        run: pytest profiler/tests
+
+      - name: Run Python profiler tests (with numpy)
+        run: |
+          python -m pip install numpy
+          pytest profiler/tests
+
+  build-obs-windows:
+    name: Build OBS Plugin (Windows x64)
+    needs: test
+    runs-on: windows-2022
+    env:
+      OBS_VERSION: ${{ github.event.inputs.obs_version || '31.0.2' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up MSVC developer environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Prepare OBS Studio libobs SDK (${{ env.OBS_VERSION }})
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $obsVer = $env:OBS_VERSION
+          $sdkRoot = Join-Path $env:RUNNER_TEMP "obs-sdk"
+          $srcDir  = Join-Path $sdkRoot "src"
+          $incDir  = Join-Path $sdkRoot "include"
+          $libDir  = Join-Path $sdkRoot "lib"
+          $cmakeDir = Join-Path $sdkRoot "cmake"
+          New-Item -ItemType Directory -Force -Path $incDir, $libDir, $cmakeDir | Out-Null
+
+          # 1. Sparse-checkout libobs public headers for exact OBS tag
+          git clone --depth 1 --filter=blob:none --sparse --branch $obsVer https://github.com/obsproject/obs-studio.git $srcDir
+          Push-Location $srcDir
+          git sparse-checkout set libobs
+          Pop-Location
+          Copy-Item -Recurse -Force (Join-Path $srcDir "libobs\*") $incDir
+
+          # Generate minimal obsconfig.h matching OBS 30/31 Windows x64 layout
+          $obsConfig = @"
+          #pragma once
+          #define OBS_VERSION "$obsVer"
+          #define OBS_DATA_PATH "../../data"
+          #define OBS_INSTALL_PREFIX ""
+          #define OBS_PLUGIN_DESTINATION "obs-plugins/64bit"
+          #define OBS_RELATIVE_PREFIX "../../"
+          #define OBS_RELEASE_CANDIDATE 0
+          #define OBS_BETA 0
+          "@
+          [System.IO.File]::WriteAllText((Join-Path $incDir "obsconfig.h"), $obsConfig, (New-Object System.Text.UTF8Encoding($false)))
+
+          # 2. Download official OBS Studio Windows x64 zip & generate obs.lib import library from obs.dll
+          $releaseApi = "https://api.github.com/repos/obsproject/obs-studio/releases/tags/$obsVer"
+          $headers = @{ "User-Agent" = "kotone-ci" }
+          if ($env:GITHUB_TOKEN) { $headers["Authorization"] = "Bearer $($env:GITHUB_TOKEN)" }
+          $release = Invoke-RestMethod -Uri $releaseApi -Headers $headers
+          $asset = $release.assets | Where-Object {
+            $_.name -match 'Windows.*\.zip$' -and $_.name -notmatch 'pdb|PDB|arm64'
+          } | Select-Object -First 1
+          if (-not $asset) {
+            throw "Could not find Windows x64 zip asset for OBS Studio $obsVer"
+          }
+          Write-Host "Downloading $($asset.name)..."
+          $zipPath = Join-Path $sdkRoot $asset.name
+          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zipPath
+
+          $extractDir = Join-Path $sdkRoot "obs-bin"
+          Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
+          $obsDll = Get-ChildItem -Path $extractDir -Recurse -Filter "obs.dll" | Select-Object -First 1
+          if (-not $obsDll) {
+            throw "obs.dll not found inside $($asset.name)"
+          }
+
+          $exportsTxt = Join-Path $libDir "exports.txt"
+          $defFile = Join-Path $libDir "obs.def"
+          $libFile = Join-Path $libDir "obs.lib"
+          dumpbin /exports $obsDll.FullName | Out-File -FilePath $exportsTxt -Encoding ascii
+
+          $defLines = New-Object System.Collections.Generic.List[string]
+          $defLines.Add("LIBRARY obs.dll")
+          $defLines.Add("EXPORTS")
+          foreach ($line in Get-Content $exportsTxt) {
+            if ($line -match '^\s+\d+\s+[0-9A-Fa-f]+\s+[0-9A-Fa-f]+\s+([A-Za-z_][A-Za-z0-9_@?$]*)') {
+              $defLines.Add("  $($Matches[1])")
+            }
+          }
+          [System.IO.File]::WriteAllLines($defFile, $defLines, [System.Text.Encoding]::ASCII)
+          lib /def:$defFile /machine:x64 /out:$libFile
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path $libFile)) {
+            throw "Failed to generate obs.lib import library"
+          }
+
+          # 3. Write standard CMake package config exporting OBS::libobs
+          $incNorm = ($incDir -replace "\\", "/")
+          $libNorm = ($libFile -replace "\\", "/")
+          $cmakeCfg = @"
+          if(NOT TARGET OBS::libobs)
+            add_library(OBS::libobs SHARED IMPORTED)
+            set_target_properties(OBS::libobs PROPERTIES
+              INTERFACE_INCLUDE_DIRECTORIES "$incNorm"
+              INTERFACE_COMPILE_DEFINITIONS "LIBOBS_IMPORTS"
+              IMPORTED_IMPLIB "$libNorm"
+            )
+          endif()
+          set(libobs_FOUND TRUE)
+          "@
+          [System.IO.File]::WriteAllText((Join-Path $cmakeDir "libobsConfig.cmake"), $cmakeCfg, (New-Object System.Text.UTF8Encoding($false)))
+          "LIBOBS_DIR=$cmakeDir" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Build and install kotone.dll (Release)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          cmake -B build-obs -G "Visual Studio 17 2022" -A x64 `
+            -DKOTONE_BUILD_OBS_PLUGIN=ON `
+            -DKOTONE_BUILD_TESTS=ON `
+            "-Dlibobs_DIR=$env:LIBOBS_DIR"
+          cmake --build build-obs --config Release
+          ctest --test-dir build-obs -C Release --output-on-failure
+          cmake --install build-obs --config Release --prefix dist/kotone-windows-x64
+
+      - name: Package Windows x64 ZIP
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force -Path release-assets | Out-Null
+          Compress-Archive -Path "dist/kotone-windows-x64/*" -DestinationPath "release-assets/kotone-windows-x64.zip" -Force
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kotone-windows-x64
+          path: release-assets/kotone-windows-x64.zip
+
+  build-obs-linux:
+    name: Build OBS Plugin (Linux x86_64)
+    needs: test
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build tools and libobs-dev
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build pkg-config libobs-dev
+
+      - name: Build and install kotone.so (Release)
+        run: |
+          cmake -B build-obs -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DKOTONE_BUILD_OBS_PLUGIN=ON \
+            -DKOTONE_BUILD_TESTS=ON
+          cmake --build build-obs
+          ctest --test-dir build-obs --output-on-failure
+          cmake --install build-obs --prefix dist/kotone-linux-x86_64
+
+      - name: Package Linux x86_64 tarball
+        run: |
+          mkdir -p release-assets
+          tar -czf release-assets/kotone-linux-x86_64.tar.gz -C dist/kotone-linux-x86_64 .
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kotone-linux-x86_64
+          path: release-assets/kotone-linux-x86_64.tar.gz
+
+  release:
+    name: Create GitHub Release
+    needs: [build-obs-windows, build-obs-linux]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download built plugin artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-downloads
+          merge-multiple: true
+
+      - name: Package kotone-profiler Python CLI
+        run: |
+          zip -r release-downloads/kotone-profiler-python.zip profiler README.md -x "*/__pycache__/*" "*/.pytest_cache/*"
+
+      - name: Generate SHA256SUMS
+        run: |
+          cd release-downloads
+          sha256sum kotone-windows-x64.zip kotone-linux-x86_64.tar.gz kotone-profiler-python.zip > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          body: |
+            ## 琴音 (Kotone) OBS Studio 音声フィルタプラグイン
+
+            ### Windows 11 導入手順
+            1. `kotone-windows-x64.zip` をダウンロードして解凍します。
+            2. 中の `obs-plugins` と `data` フォルダを `C:\Program Files\obs-studio\` に上書きコピーします（または `%ProgramData%\obs-studio\plugins\kotone\` へ配置）。
+            3. OBS Studio を再起動し、マイクの「フィルタ」→「＋」→「琴音 (Kotone) 声質フィルタ」を追加します。
+
+            ### Linux 導入手順
+            1. `kotone-linux-x86_64.tar.gz` を展開し、`sudo tar -xzf kotone-linux-x86_64.tar.gz -C /usr` で配置して OBS Studio を再起動します。
+          files: |
+            release-downloads/kotone-windows-x64.zip
+            release-downloads/kotone-linux-x86_64.tar.gz
+            release-downloads/kotone-profiler-python.zip
+            release-downloads/SHA256SUMS.txt

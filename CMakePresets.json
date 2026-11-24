@@ -1,0 +1,110 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 20,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "default",
+      "displayName": "Default (DSP Core & Tests)",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "KOTONE_BUILD_OBS_PLUGIN": "OFF",
+        "KOTONE_BUILD_TESTS": "ON"
+      }
+    },
+    {
+      "name": "windows-msvc",
+      "displayName": "Windows MSVC (DSP Core & Tests)",
+      "generator": "Visual Studio 17 2022",
+      "binaryDir": "${sourceDir}/build-msvc",
+      "cacheVariables": {
+        "KOTONE_BUILD_OBS_PLUGIN": "OFF",
+        "KOTONE_BUILD_TESTS": "ON"
+      }
+    },
+    {
+      "name": "windows-obs-plugin",
+      "displayName": "Windows MSVC (OBS Studio Plugin)",
+      "generator": "Visual Studio 17 2022",
+      "binaryDir": "${sourceDir}/build-obs",
+      "cacheVariables": {
+        "KOTONE_BUILD_OBS_PLUGIN": "ON",
+        "KOTONE_BUILD_TESTS": "ON"
+      }
+    },
+    {
+      "name": "windows-mingw",
+      "displayName": "Windows MinGW Ninja (DSP Core & Tests)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-mingw",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "KOTONE_BUILD_OBS_PLUGIN": "OFF",
+        "KOTONE_BUILD_TESTS": "ON"
+      }
+    },
+    {
+      "name": "linux-release",
+      "displayName": "Linux GCC/Clang Release (DSP Core & Tests)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-linux",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "KOTONE_BUILD_OBS_PLUGIN": "OFF",
+        "KOTONE_BUILD_TESTS": "ON"
+      }
+    },
+    {
+      "name": "linux-obs-plugin",
+      "displayName": "Linux Release (OBS Studio Plugin)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-linux-obs",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "KOTONE_BUILD_OBS_PLUGIN": "ON",
+        "KOTONE_BUILD_TESTS": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "default",
+      "configurePreset": "default",
+      "configuration": "Release"
+    },
+    {
+      "name": "windows-msvc",
+      "configurePreset": "windows-msvc",
+      "configuration": "Release"
+    },
+    {
+      "name": "windows-obs-plugin",
+      "configurePreset": "windows-obs-plugin",
+      "configuration": "Release"
+    },
+    {
+      "name": "windows-mingw",
+      "configurePreset": "windows-mingw"
+    },
+    {
+      "name": "linux-release",
+      "configurePreset": "linux-release"
+    },
+    {
+      "name": "linux-obs-plugin",
+      "configurePreset": "linux-obs-plugin"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "default",
+      "configurePreset": "default",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

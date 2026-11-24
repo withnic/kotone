@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cmake *)",
+      "Bash(ctest *)",
+      "Bash(pytest *)",
+      "Bash(python *)",
+      "Bash(python3 *)"
+    ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmake -B build -DKOTONE_BUILD_OBS_PLUGIN=OFF -DKOTONE_BUILD_TESTS=ON 1>&2 && cmake --build build --config Release 1>&2 && ctest --test-dir build --output-on-failure 1>&2 && (if [ -d profiler/tests ]; then python3 -m pytest profiler/tests 1>&2 || pytest profiler/tests 1>&2; fi) || exit 2"
+          }
+        ]
+      }
+    ]
+  }
+}

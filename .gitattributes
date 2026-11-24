@@ -1,0 +1,35 @@
+# Normalize all text files to LF across Windows, macOS, and Linux
+* text=auto eol=lf
+
+# Explicitly enforce LF on source, config, script, and doc files
+*.c text eol=lf
+*.cc text eol=lf
+*.cpp text eol=lf
+*.h text eol=lf
+*.hpp text eol=lf
+*.py text eol=lf
+*.json text eol=lf
+*.toml text eol=lf
+*.ini text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+*.cmake text eol=lf
+CMakeLists.txt text eol=lf
+Makefile text eol=lf
+.clang-format text eol=lf
+.clang-tidy text eol=lf
+.gitignore text eol=lf
+.gitattributes text eol=lf
+
+# Binary files
+*.wav binary
+*.dll binary
+*.so binary
+*.dylib binary
+*.exe binary
+*.lib binary
+*.a binary
+*.zip binary
+*.gz binary
+*.png binary
