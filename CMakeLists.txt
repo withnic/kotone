@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(kotone
-    VERSION 1.1.0
+    VERSION 1.1.1
     DESCRIPTION "Kotone (琴音) OBS Studio Audio Filter Plugin and Core DSP Engine"
     LANGUAGES CXX
 )

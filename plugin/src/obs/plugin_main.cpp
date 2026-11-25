@@ -17,7 +17,7 @@ MODULE_EXPORT const char* obs_module_description(void) {
 
 bool obs_module_load(void) {
     kotone::obs_adapter::register_kotone_filter();
-    blog(LOG_INFO, "[kotone] Kotone voice filter module loaded (version 1.1.0)");
+    blog(LOG_INFO, "[kotone] Kotone voice filter module loaded (version 1.1.1)");
     return true;
 }
 
