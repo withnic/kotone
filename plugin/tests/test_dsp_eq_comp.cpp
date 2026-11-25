@@ -38,7 +38,7 @@ VoiceProfile make_clean_passthrough_profile() {
     p.dsp_params.compressor.enabled = false;
     p.dsp_params.compressor.makeup_gain_db = 0.0f;
     p.dsp_params.limiter.enabled = false;
-    p.ui_overrides = {100.0f, 0.0f, -1.0f};
+    p.ui_overrides = {100.0f, 0.0f, -1.0f, 100.0f, 100.0f};
     return p;
 }
 

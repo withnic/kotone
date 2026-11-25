@@ -724,6 +724,10 @@ VoiceProfile make_clear_broadcast_preset() {
     p.profile_name = "Clear Broadcast";
     p.target_preset = "clear_broadcast";
 
+    // Lip-noise removal works without learned thresholds; breath suppression needs a profile.
+    p.dsp_params.declick.enabled = true;
+    p.dsp_params.declick.max_reduction_db = 12.0f;
+
     p.dsp_params.input_gain_db = 0.0f;
     p.dsp_params.hpf.enabled = true;
     p.dsp_params.hpf.cutoff_hz = 85.0f;
@@ -759,7 +763,7 @@ VoiceProfile make_clear_broadcast_preset() {
     p.dsp_params.limiter.lookahead_ms = 2.0f;
     p.dsp_params.limiter.release_ms = 50.0f;
 
-    p.ui_overrides = {100.0f, 0.0f, -1.0f};
+    p.ui_overrides = {100.0f, 0.0f, -1.0f, 100.0f, 100.0f};
     clamp_voice_profile(p, kDefaultSampleRate);
     return p;
 }
@@ -768,6 +772,10 @@ VoiceProfile make_warm_podcast_preset() {
     VoiceProfile p = make_default_neutral_profile();
     p.profile_name = "Warm Podcast";
     p.target_preset = "warm_podcast";
+
+    // Gentler lip-noise removal: whisper / ASMR content may contain intentional mouth sounds.
+    p.dsp_params.declick.enabled = true;
+    p.dsp_params.declick.max_reduction_db = 6.0f;
 
     p.dsp_params.input_gain_db = 0.0f;
     p.dsp_params.hpf.enabled = true;
@@ -804,7 +812,7 @@ VoiceProfile make_warm_podcast_preset() {
     p.dsp_params.limiter.lookahead_ms = 2.0f;
     p.dsp_params.limiter.release_ms = 50.0f;
 
-    p.ui_overrides = {100.0f, 0.0f, -1.0f};
+    p.ui_overrides = {100.0f, 0.0f, -1.0f, 100.0f, 100.0f};
     clamp_voice_profile(p, kDefaultSampleRate);
     return p;
 }
@@ -1033,6 +1041,44 @@ ProfileLoadResult parse_profile_json(const std::string& json_text, const std::st
         }
     }
 
+    if (const JsonValue* dc_v = dsp_obj->find("declick")) {
+        if (dc_v->type != JsonValue::Type::Object) {
+            res.error = ErrorCode::ErrJsonParseFailed;
+            res.error_message = "'dsp_params.declick' must be an object";
+            return res;
+        }
+        DeclickParams& dc = profile.dsp_params.declick;
+        if (!read_opt_bool(*dc_v, "enabled", dc.enabled, field_err) ||
+            !read_opt_float(*dc_v, "sensitivity_db", dc.sensitivity_db, field_err) ||
+            !read_opt_float(*dc_v, "max_reduction_db", dc.max_reduction_db, field_err) ||
+            !read_opt_float(*dc_v, "crossover_hz", dc.crossover_hz, field_err)) {
+            res.error = ErrorCode::ErrJsonParseFailed;
+            res.error_message = field_err;
+            return res;
+        }
+    }
+
+    if (const JsonValue* br_v = dsp_obj->find("breath")) {
+        if (br_v->type != JsonValue::Type::Object) {
+            res.error = ErrorCode::ErrJsonParseFailed;
+            res.error_message = "'dsp_params.breath' must be an object";
+            return res;
+        }
+        BreathParams& br = profile.dsp_params.breath;
+        if (!read_opt_bool(*br_v, "enabled", br.enabled, field_err) ||
+            !read_opt_float(*br_v, "max_reduction_db", br.max_reduction_db, field_err) ||
+            !read_opt_float(*br_v, "level_ceiling_dbfs", br.level_ceiling_dbfs, field_err) ||
+            !read_opt_float(*br_v, "tilt_threshold_db", br.tilt_threshold_db, field_err) ||
+            !read_opt_float(*br_v, "min_duration_ms", br.min_duration_ms, field_err) ||
+            !read_opt_float(*br_v, "hangover_ms", br.hangover_ms, field_err) ||
+            !read_opt_float(*br_v, "attack_ms", br.attack_ms, field_err) ||
+            !read_opt_float(*br_v, "release_ms", br.release_ms, field_err)) {
+            res.error = ErrorCode::ErrJsonParseFailed;
+            res.error_message = field_err;
+            return res;
+        }
+    }
+
     if (const JsonValue* de_v = dsp_obj->find("deesser")) {
         if (de_v->type != JsonValue::Type::Object) {
             res.error = ErrorCode::ErrJsonParseFailed;
@@ -1114,7 +1160,11 @@ ProfileLoadResult parse_profile_json(const std::string& json_text, const std::st
             !read_opt_float(*ov_v, "output_makeup_trim_db",
                             profile.ui_overrides.output_makeup_trim_db, field_err) ||
             !read_opt_float(*ov_v, "limiter_ceiling_dbfs",
-                            profile.ui_overrides.limiter_ceiling_dbfs, field_err, &has_ceiling)) {
+                            profile.ui_overrides.limiter_ceiling_dbfs, field_err, &has_ceiling) ||
+            !read_opt_float(*ov_v, "declick_amount_percent",
+                            profile.ui_overrides.declick_amount_percent, field_err) ||
+            !read_opt_float(*ov_v, "breath_amount_percent",
+                            profile.ui_overrides.breath_amount_percent, field_err)) {
             res.error = ErrorCode::ErrJsonParseFailed;
             res.error_message = field_err;
             return res;
@@ -1152,7 +1202,11 @@ std::string serialize_profile_json(const VoiceProfile& raw_profile) {
     oss << "    \"output_makeup_trim_db\": "
         << format_number(p.ui_overrides.output_makeup_trim_db, 2) << ",\n";
     oss << "    \"limiter_ceiling_dbfs\": " << format_number(p.ui_overrides.limiter_ceiling_dbfs, 2)
-        << "\n";
+        << ",\n";
+    oss << "    \"declick_amount_percent\": "
+        << format_number(p.ui_overrides.declick_amount_percent, 2) << ",\n";
+    oss << "    \"breath_amount_percent\": "
+        << format_number(p.ui_overrides.breath_amount_percent, 2) << "\n";
     oss << "  },\n";
 
     if (p.analysis_metrics.present) {
@@ -1181,6 +1235,26 @@ std::string serialize_profile_json(const VoiceProfile& raw_profile) {
     oss << "      \"enabled\": " << (p.dsp_params.hpf.enabled ? "true" : "false") << ",\n";
     oss << "      \"cutoff_hz\": " << format_number(p.dsp_params.hpf.cutoff_hz, 2) << ",\n";
     oss << "      \"slope_db_per_oct\": " << p.dsp_params.hpf.slope_db_per_oct << "\n";
+    oss << "    },\n";
+
+    const DeclickParams& dc = p.dsp_params.declick;
+    oss << "    \"declick\": {\n";
+    oss << "      \"enabled\": " << (dc.enabled ? "true" : "false") << ",\n";
+    oss << "      \"sensitivity_db\": " << format_number(dc.sensitivity_db, 2) << ",\n";
+    oss << "      \"max_reduction_db\": " << format_number(dc.max_reduction_db, 2) << ",\n";
+    oss << "      \"crossover_hz\": " << format_number(dc.crossover_hz, 1) << "\n";
+    oss << "    },\n";
+
+    const BreathParams& br = p.dsp_params.breath;
+    oss << "    \"breath\": {\n";
+    oss << "      \"enabled\": " << (br.enabled ? "true" : "false") << ",\n";
+    oss << "      \"max_reduction_db\": " << format_number(br.max_reduction_db, 2) << ",\n";
+    oss << "      \"level_ceiling_dbfs\": " << format_number(br.level_ceiling_dbfs, 2) << ",\n";
+    oss << "      \"tilt_threshold_db\": " << format_number(br.tilt_threshold_db, 2) << ",\n";
+    oss << "      \"min_duration_ms\": " << format_number(br.min_duration_ms, 2) << ",\n";
+    oss << "      \"hangover_ms\": " << format_number(br.hangover_ms, 2) << ",\n";
+    oss << "      \"attack_ms\": " << format_number(br.attack_ms, 2) << ",\n";
+    oss << "      \"release_ms\": " << format_number(br.release_ms, 2) << "\n";
     oss << "    },\n";
 
     oss << "    \"eq_bands\": [\n";

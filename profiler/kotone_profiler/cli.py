@@ -11,7 +11,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from . import KotoneProfilerError, __version__
-from .analyzer import analyze_audio
+from .analyzer import AnalysisResult, analyze_audio
 from .optimizer import VALID_PRESETS, optimize_profile
 from .wav_io import load_wav_mono
 
@@ -78,6 +78,17 @@ def _default_obs_profiles_dir() -> Path:
     return Path.home() / ".config" / "obs-studio" / "plugin_config" / "kotone" / "profiles"
 
 
+def _cleaner_summary(analysis: AnalysisResult) -> str:
+    cl = analysis.cleaner
+    if cl is None:
+        return ""
+    return (
+        f"リップノイズ {cl.click_count} 回 ({cl.click_rate_per_min:.0f} 回/分) / "
+        f"ブレス {cl.breath_count} 回 ({cl.breath_duration_sec:.1f}s) を検出\n"
+        "  (声の解析からは除外し、配信中はプラグインが自動で抑えます)"
+    )
+
+
 def _run_wizard(wav_input: str, output_dir_override: str | None = None) -> int:
     input_path = Path(wav_input)
     if not input_path.is_file():
@@ -139,7 +150,8 @@ def _run_wizard(wav_input: str, output_dir_override: str | None = None) -> int:
         f"  解析結果: 有声={analysis.voiced_duration_sec:.1f}s / "
         f"基本周波数 F0={analysis.fundamental_freq_median_hz:.1f}Hz / "
         f"平均音量={analysis.mean_rms_dbfs:.1f}dBFS / "
-        f"ノイズフロア={analysis.noise_floor_dbfs:.1f}dBFS\n\n"
+        f"ノイズフロア={analysis.noise_floor_dbfs:.1f}dBFS\n"
+        f"  {_cleaner_summary(analysis)}\n\n"
         "OBS Studio の「琴音 (Kotone) 声質フィルタ」で\n"
         "「プロファイル一覧を再スキャン」を押して選択してください。"
     )
@@ -244,7 +256,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"(voiced={analysis.voiced_duration_sec:.1f}s, "
             f"F0={analysis.fundamental_freq_median_hz:.1f}Hz, "
             f"RMS={analysis.mean_rms_dbfs:.1f}dBFS, "
-            f"noise={analysis.noise_floor_dbfs:.1f}dBFS)"
+            f"noise={analysis.noise_floor_dbfs:.1f}dBFS"
+            + (
+                f", clicks={analysis.cleaner.click_count}, breaths={analysis.cleaner.breath_count}"
+                if analysis.cleaner is not None
+                else ""
+            )
+            + ")"
         )
         return 0
 

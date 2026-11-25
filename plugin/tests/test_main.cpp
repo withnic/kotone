@@ -122,6 +122,7 @@ int main(int argc, char** argv) {
         kotone::test::run_dsp_limiter_tests(passed, failed);
         kotone::test::run_dsp_eq_comp_tests(passed, failed);
         kotone::test::run_profile_loader_tests(passed, failed);
+        kotone::test::run_voice_cleaner_tests(passed, failed);
 
         std::cout << "\nSummary: " << passed << " passed, " << failed << " failed.\n";
         return (failed == 0 && kotone::test::ctx().failures == 0) ? 0 : 1;

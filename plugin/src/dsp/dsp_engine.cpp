@@ -39,6 +39,7 @@ DspConfigSnapshot build_dsp_snapshot_from_params(const DspParams& base_params,
     // - Compressor ratio = 1.0 + (ratio - 1.0) * mix
     // - Compressor makeup_gain_db *= mix
     // - De-Esser max_reduction_db *= mix
+    // - Declick / Breath max_reduction_db *= mix * (UI amount percent / 100)
     // - Input gain *= mix
     // - HPF and Limiter remain 100% active regardless of mix for clipping/rumble protection.
     snap.effective_params = snap.base_params;
@@ -52,6 +53,13 @@ DspConfigSnapshot build_dsp_snapshot_from_params(const DspParams& base_params,
 
     snap.effective_params.deesser.max_reduction_db =
         snap.base_params.deesser.max_reduction_db * mix;
+
+    snap.effective_params.declick.max_reduction_db =
+        snap.base_params.declick.max_reduction_db * mix *
+        (snap.ui_overrides.declick_amount_percent / 100.0f);
+    snap.effective_params.breath.max_reduction_db =
+        snap.base_params.breath.max_reduction_db * mix *
+        (snap.ui_overrides.breath_amount_percent / 100.0f);
 
     snap.effective_params.compressor.ratio =
         1.0f + (snap.base_params.compressor.ratio - 1.0f) * mix;
@@ -71,6 +79,9 @@ DspConfigSnapshot build_dsp_snapshot_from_params(const DspParams& base_params,
     snap.deesser_sc_coeffs = BiquadCoeffs::bandpass_constant_peak(
         fs_d, static_cast<double>(snap.effective_params.deesser.freq_hz),
         static_cast<double>(snap.effective_params.deesser.bandwidth_q));
+    snap.cleaner = make_voice_cleaner_config(
+        snap.effective_params.declick, snap.effective_params.breath,
+        static_cast<double>(snap.effective_params.input_gain_db), 1.0, 1.0, fs);
 
     return snap;
 }
@@ -107,6 +118,7 @@ void DspEngine::reset_audio_states() noexcept {
             band.reset();
         }
     }
+    cleaner_.reset();
     deesser_.reset();
     compressor_.reset();
     limiter_.reset();
@@ -294,7 +306,10 @@ void DspEngine::process(float* const* channels, uint32_t num_channels,
             frame[ch] *= current_input_gain_;
         }
 
-        // 2. High-Pass Filter (2nd / 4th order Butterworth)
+        // 2. Voice Cleaner: lip-noise click removal + breath suppression (fixed 2 ms look-ahead)
+        cleaner_.process_frame(frame, ch_count, cfg.cleaner);
+
+        // 3. High-Pass Filter (2nd / 4th order Butterworth)
         if (hpf_enabled) {
             for (uint32_t ch = 0; ch < ch_count; ++ch) {
                 double s = hpf_stage1_[ch].process(frame[ch], cfg.hpf_coeffs[0]);
@@ -305,7 +320,7 @@ void DspEngine::process(float* const* channels, uint32_t num_channels,
             }
         }
 
-        // 3. 8-Band Parametric EQ
+        // 4. 8-Band Parametric EQ
         for (uint32_t b = 0; b < kNumEqBands; ++b) {
             if (!cfg.effective_params.eq_bands[b].enabled) {
                 continue;
@@ -316,30 +331,30 @@ void DspEngine::process(float* const* channels, uint32_t num_channels,
             }
         }
 
-        // 4. De-Esser (4kHz-10kHz dynamic split-band reduction)
+        // 5. De-Esser (4kHz-10kHz dynamic split-band reduction)
         if (cfg.effective_params.deesser.enabled) {
             deesser_.process_frame(frame, ch_count, cfg.effective_params.deesser,
                                    cfg.deesser_sc_coeffs, fs);
         }
 
-        // 5. Stereo-Linked RMS/Peak Hybrid Compressor
+        // 6. Stereo-Linked RMS/Peak Hybrid Compressor
         if (cfg.effective_params.compressor.enabled) {
             compressor_.process_frame(frame, ch_count, cfg.effective_params.compressor, fs);
         }
 
-        // 6. Auto/Manual Makeup Gain + Output Trim (10ms smoothed gain)
+        // 7. Auto/Manual Makeup Gain + Output Trim (10ms smoothed gain)
         current_makeup_gain_ =
             alpha_smooth * current_makeup_gain_ + (1.0 - alpha_smooth) * target_makeup_gain;
         for (uint32_t ch = 0; ch < ch_count; ++ch) {
             frame[ch] *= current_makeup_gain_;
         }
 
-        // 7. Lookahead Brickwall Limiter (with hard ceiling clamp & NaN guard)
+        // 8. Lookahead Brickwall Limiter (with hard ceiling clamp & NaN guard)
         if (limiter_.process_frame(frame, ch_count, cfg.effective_params.limiter, fs)) {
             non_finite_count_.fetch_add(1, std::memory_order_relaxed);
         }
 
-        // 8. Final output write & safety guard
+        // 9. Final output write & safety guard
         for (uint32_t ch = 0; ch < ch_count; ++ch) {
             const float out = static_cast<float>(frame[ch]);
             if (!std::isfinite(out)) {
@@ -353,6 +368,7 @@ void DspEngine::process(float* const* channels, uint32_t num_channels,
 
     last_comp_gr_db_.store(compressor_.last_gain_reduction_db(), std::memory_order_relaxed);
     last_lim_gr_db_.store(limiter_.last_gain_reduction_db(), std::memory_order_relaxed);
+    click_events_.store(cleaner_.click_events(), std::memory_order_relaxed);
 }
 
 } // namespace kotone

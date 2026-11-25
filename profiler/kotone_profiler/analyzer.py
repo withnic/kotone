@@ -10,6 +10,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from . import KotoneProfilerError
+from .cleaner import CleanerAnalysis, analyze_cleaner
 from .wav_io import HAS_NUMPY, WavAudio
 
 if HAS_NUMPY:
@@ -47,6 +48,7 @@ class AnalysisResult:
     sibilance_peak_freq_hz: float
     sibilance_peak_dbfs: float
     band_rel_db: dict[float, float] = field(default_factory=dict)
+    cleaner: CleanerAnalysis | None = None
 
 
 def _linear_to_db(val: float, floor_db: float = -120.0) -> float:
@@ -238,7 +240,20 @@ def analyze_audio(audio: WavAudio, *, use_numpy: bool = True) -> AnalysisResult:
         noise_floor_dbfs = float(np.percentile(frame_rms_db, 10))
         noise_floor_dbfs = max(-120.0, min(0.0, noise_floor_dbfs))
         vad_thresh_db = max(noise_floor_dbfs + 10.0, -50.0)
-        voiced_mask = frame_rms_db >= vad_thresh_db
+        active_mask = frame_rms_db >= vad_thresh_db
+        cleaner = analyze_cleaner(
+            sig,
+            sr,
+            hop_len=hop_len,
+            frame_len=frame_len,
+            num_frames=num_frames,
+            active_mask=active_mask.tolist(),
+            noise_floor_dbfs=noise_floor_dbfs,
+            use_numpy=True,
+        )
+        # Lip-noise clicks and breaths are removed by the plugin's Voice Cleaner before EQ /
+        # compression, so they must not bias the voice measurements either.
+        voiced_mask = active_mask & ~np.asarray(cleaner.excluded_frame_mask, dtype=bool)
         voiced_indices = np.flatnonzero(voiced_mask)
         voiced_duration_sec = float(len(voiced_indices)) * hop_sec
 
@@ -352,7 +367,19 @@ def analyze_audio(audio: WavAudio, *, use_numpy: bool = True) -> AnalysisResult:
         sorted_rms_db = sorted(frame_rms_db_list)
         noise_floor_dbfs = max(-120.0, min(0.0, _percentile(sorted_rms_db, 0.10)))
         vad_thresh_db = max(noise_floor_dbfs + 10.0, -50.0)
-        voiced_indices_list = [i for i, db in enumerate(frame_rms_db_list) if db >= vad_thresh_db]
+        active_list = [db >= vad_thresh_db for db in frame_rms_db_list]
+        cleaner = analyze_cleaner(
+            sig_list,
+            sr,
+            hop_len=hop_len,
+            frame_len=frame_len,
+            num_frames=num_frames,
+            active_mask=active_list,
+            noise_floor_dbfs=noise_floor_dbfs,
+            use_numpy=False,
+        )
+        excluded = cleaner.excluded_frame_mask
+        voiced_indices_list = [i for i in range(num_frames) if active_list[i] and not excluded[i]]
         voiced_duration_sec = float(len(voiced_indices_list)) * hop_sec
 
         if voiced_duration_sec < MIN_VOICED_DURATION_SEC:
@@ -500,4 +527,5 @@ def analyze_audio(audio: WavAudio, *, use_numpy: bool = True) -> AnalysisResult:
         sibilance_peak_freq_hz=sibilance_peak_freq_hz,
         sibilance_peak_dbfs=sibilance_peak_dbfs,
         band_rel_db=band_rel_db,
+        cleaner=cleaner,
     )

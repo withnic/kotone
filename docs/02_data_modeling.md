@@ -12,7 +12,7 @@ Python CLI（`kotone-profiler`）が出力し、C++ OBSプラグインが読み�
 
 ```json
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.1.0",
   "profile_name": "囁き声配信（ASMR・深夜）",
   "created_at": "2026-11-24T18:30:00Z",
   "updated_at": "2026-11-24T18:35:00Z",
@@ -20,7 +20,9 @@ Python CLI（`kotone-profiler`）が出力し、C++ OBSプラグインが読み�
   "ui_overrides": {
     "mix_percent": 100.0,
     "output_makeup_trim_db": 0.0,
-    "limiter_ceiling_dbfs": -1.0
+    "limiter_ceiling_dbfs": -1.0,
+    "declick_amount_percent": 100.0,
+    "breath_amount_percent": 100.0
   },
   "analysis_metrics": {
     "sample_rate_hz": 48000,
@@ -38,6 +40,22 @@ Python CLI（`kotone-profiler`）が出力し、C++ OBSプラグインが読み�
       "enabled": true,
       "cutoff_hz": 75.0,
       "slope_db_per_oct": 24
+    },
+    "declick": {
+      "enabled": true,
+      "sensitivity_db": 12.0,
+      "max_reduction_db": 6.0,
+      "crossover_hz": 2500.0
+    },
+    "breath": {
+      "enabled": true,
+      "max_reduction_db": 4.0,
+      "level_ceiling_dbfs": -52.0,
+      "tilt_threshold_db": -3.5,
+      "min_duration_ms": 30.0,
+      "hangover_ms": 80.0,
+      "attack_ms": 25.0,
+      "release_ms": 4.0
     },
     "eq_bands": [
       { "index": 0, "enabled": true, "type": "low_shelf", "freq_hz": 120.0, "gain_db": 1.5, "q": 0.707 },
@@ -77,6 +95,8 @@ Python CLI（`kotone-profiler`）が出力し、C++ OBSプラグインが読み�
 }
 ```
 
+※ `dsp_params.declick` / `dsp_params.breath`（schema `1.1.0` で追加）はオプショナルとし、欠落時は `enabled: false`（無効）で読み込む。schema `1.0.0` の既存JSONはこれまでどおりの音で動作する。`breath.level_ceiling_dbfs` はプロファイラー入力（`input_gain_db` 適用前）の 20ms RMS 基準で記録し、プラグインは実行時に `input_gain_db` 分だけしきい値をずらして適用する。
+※ `ui_overrides.declick_amount_percent` / `ui_overrides.breath_amount_percent` はオプショナル（デフォルト `100.0`）で、OBS UI のスライダーから各 `max_reduction_db` を 0〜100% でスケールする（0% で無効）。
 ※ `ui_overrides` および `updated_at` はオプショナルフィールドとし、未記載の旧JSONや最小JSONを読み込んだ場合もデフォルト値（`mix_percent: 100.0`, `output_makeup_trim_db: 0.0`, `limiter_ceiling_dbfs: dsp_params.limiter.ceiling_dbfs`）で互換動作させる。
 
 ### 2.2 バリデーション・クランプ境界値仕様（C++ / Python 共通）
@@ -85,13 +105,25 @@ Python CLI（`kotone-profiler`）が出力し、C++ OBSプラグインが読み�
 
 | フィールド | 型 | 最小値 | 最大値 | デフォルト値 | 異常時挙動 |
 | :---- | :---- | :---- | :---- | :---- | :---- |
-| `schema_version` | string | `"1.0.0"` | `"1.x.x"` | `"1.0.0"` | メジャーバージョン不一致（`2.0.0`等）は読込拒否（`ERR_SCHEMA_UNSUPPORTED`） |
+| `schema_version` | string | `"1.0.0"` | `"1.x.x"` | `"1.1.0"` | メジャーバージョン不一致（`2.0.0`等）は読込拒否（`ERR_SCHEMA_UNSUPPORTED`） |
 | `profile_name` | string | 1文字 | 64文字 | ファイル名（拡張子除） | 空文字・欠落時はファイル名を使用、64文字超過時はUTF-8文字境界で切り詰め |
 | `ui_overrides.mix_percent` | float | `0.0` | `100.0` | `100.0` | クランプ |
 | `ui_overrides.output_makeup_trim_db` | float | `-12.0` | `+12.0` | `0.0` | クランプ |
+| `ui_overrides.declick_amount_percent` | float | `0.0` | `100.0` | `100.0` | クランプ |
+| `ui_overrides.breath_amount_percent` | float | `0.0` | `100.0` | `100.0` | クランプ |
 | `input_gain_db` | float | `-24.0` | `+24.0` | `0.0` | クランプ |
 | `hpf.cutoff_hz` | float | `20.0` | `300.0` | `80.0` | サンプルレート Nyquist (`fs * 0.45`) 未満にも同時クランプ |
 | `hpf.slope_db_per_oct` | int | `12` | `24` | `24` | `12` または `24` 以外は `24` にフォールバック |
+| `declick.sensitivity_db` | float | `6.0` | `30.0` | `12.0` | クランプ |
+| `declick.max_reduction_db` | float | `0.0` | `24.0` | `12.0` | クランプ |
+| `declick.crossover_hz` | float | `1000.0` | `8000.0` | `2500.0` | サンプルレート `fs * 0.4` 未満にも同時クランプ |
+| `breath.max_reduction_db` | float | `0.0` | `24.0` | `9.0` | クランプ |
+| `breath.level_ceiling_dbfs` | float | `-80.0` | `-12.0` | `-40.0` | クランプ |
+| `breath.tilt_threshold_db` | float | `-12.0` | `+12.0` | `0.0` | クランプ |
+| `breath.min_duration_ms` | float | `0.0` | `200.0` | `30.0` | クランプ |
+| `breath.hangover_ms` | float | `0.0` | `500.0` | `80.0` | クランプ |
+| `breath.attack_ms` | float | `1.0` | `200.0` | `25.0` | クランプ |
+| `breath.release_ms` | float | `0.5` | `100.0` | `4.0` | クランプ |
 | `eq_bands` 要素数 | array | `1` | `8` | `8` | 8バンド未満は残りを `enabled: false` で補完、9以上は先頭8件採用 |
 | `eq_bands[i].type` | string | \- | \- | `"peaking"` | `"peaking"`, `"low_shelf"`, `"high_shelf"` 以外はパースエラー |
 | `eq_bands[i].freq_hz` | float | `20.0` | `20000.0` | `1000.0` | サンプルレート Nyquist (`fs * 0.48`) 未満に同時クランプ |
@@ -151,7 +183,7 @@ Python CLI（`kotone-profiler`）が出力し、C++ OBSプラグインが読み�
   - `DspEngine` 内部に固定長 `16` 要素の `SnapshotSlot` 配列（各スロットが `DspConfigSnapshot` 実体と `std::atomic<uint32_t> readers{0}` を保持）を事前確保する。  
   - UIスレッドは空きスロットへ新しい `DspConfigSnapshot` を書き込み、`active_slot_.store(new_idx, std::memory_order_release)` で切り替える。オーディオスレッドは `readers` をインクリメント/デクリメントして待機ゼロ・ヒープ解放ゼロで安全に読み出す。  
 - **Mix（プロファイル適用度 `0.0`〜`1.0`）の動的補間**:  
-  - `mix = mix_percent / 100.0` とし、EQの `gain_db` に `mix` を乗算、コンプレッサーの `ratio` を `1.0 + (ratio - 1.0) * mix`、`makeup_gain_db` に `mix` を乗算する。HPF とリミッター（声割れ防止の天井制限）は安全保護のため `mix` に関わらず100%有効を維持する。
+  - `mix = mix_percent / 100.0` とし、EQの `gain_db` に `mix` を乗算、コンプレッサーの `ratio` を `1.0 + (ratio - 1.0) * mix`、`makeup_gain_db` に `mix` を乗算する。De-Esser の `max_reduction_db` に `mix` を、Voice Cleaner の `declick.max_reduction_db` / `breath.max_reduction_db` に `mix * (各 amount_percent / 100)` を乗算する。HPF とリミッター（声割れ防止の天井制限）は安全保護のため `mix` に関わらず100%有効を維持する。
 
 ## 4\. DSPアルゴリズム数理仕様（Audio EQ Cookbook / 標準DSP準拠）
 
@@ -164,10 +196,30 @@ Python CLI（`kotone-profiler`）が出力し、C++ OBSプラグインが読み�
 - **ルックアヘッド・ブリックウォールリミッター**:  
   - 最大 `5.0ms`（192kHz時 `960 samples`）の固定長リングバッファ。先読み窓内の全チャンネル最大ピークを検出し、最終段で `std::clamp(sample, -ceiling_linear, ceiling_linear)` および `std::isfinite(sample)` ガードを適用する。
 
+### 4.1 Voice Cleaner（リップノイズ除去 ＋ ブレス抑制）
+
+Input Trim 直後に置き、検出は遅延前の信号、ゲイン適用は固定 `2.0ms` 遅延後の信号に対して行う（先読み）。全チャンネル平均のモノラル信号 `m[n]` で検出し、同一ゲインを全チャンネルへ適用する（ステレオリンク）。以下の定数は C++（`voice_cleaner.hpp`）と Python（`cleaner.py`）で完全に一致させ、オフライン学習したしきい値がリアルタイムでも同じ意味を持つようにする。窓はすべて矩形（ボックスカー）平均。
+
+- **リップノイズ（クリック）検出**:
+  - `e[n] = (m[n] - 2m[n-1] + m[n-2])^2`（2階差分エネルギー、FIR のため C++/Python で厳密一致）。
+  - 判定点 `c = n - 1.0ms`。`fast(c)` = `c` で終わる `0.5ms` 平均、`slow(c)` = fast 窓の直前で終わる `20ms` 平均。
+  - 次の4条件をすべて満たすとクリック: (1) `fast(c) > slow(c) * 10^(sensitivity_db/10)`（急な立ち上がり）、(2) `fast(c) > 1e-14`、(3) `fast(c) > (m^2 の 0.5ms 平均) * 10^((-10 - 40 log10(fs/48000))/10)`（広帯域であること。声帯パルスや発声の立ち上がりは低域主体で 15〜30dB 下回る）、(4) `fast(c + 1ms) < fast(c) / 4`（1ms 以内に 6dB 減衰する孤立したパルスであること。破裂音や摩擦音は持続するので除外）。
+  - 修復: 遅延信号を 2次 Butterworth HPF（`crossover_hz`）で高域 `h` に分け、`y = x - (1 - g) * h`（ゲイン 1 で完全再構成）。クリック検出から出力側で `2.0ms` 後までゲインを `-max_reduction_db` に保持（アタック時定数 `0.05ms`、リリース `1ms`）。声の本体（クロスオーバー以下）には触れない。
+- **ブレス検出・抑制**:
+  - 20ms 平均で `level = mean(m^2)`、`low = mean(BP400^2)`、`high = mean(BP4000^2)`（RBJ 0dB ピーク帯域通過 Biquad、Q `0.6`、高域中心は `min(4000, fs*0.3)`）。
+  - `breathy = high > low * 10^(tilt_threshold_db/10) かつ level < 10^((level_ceiling_dbfs + input_gain_db)/10)`。
+  - `voice_like = breathy でない かつ level >= ceiling - 30dB かつ（低域優勢 または level >= ceiling）`。`voice_like` の間はハングオーバーカウンタを `hangover_ms` に再設定し、0 になるまで抑制しない（語尾の無声子音を守る）。
+  - `breathy` かつハングオーバー 0 の状態が `min_duration_ms` 続いたら抑制開始。目標ゲイン `-max_reduction_db`（完全には消さない）、アタック `attack_ms`、リリース `release_ms`（先読み 2ms により発声の立ち上がり前に戻る）。
+- **リアルタイム安全性**: リングバッファ（2階差分 8192、短区間 512、ブレス 4096、遅延 512 × 8ch）はすべて固定長メンバとして事前確保し、`process_frame()` 内で確保・I/O・ロックを行わない。
+
 ## 5\. Python 解析アルゴリズム仕様（`kotone-profiler`）
 
 1. **前処理・VAD（有声区間検出）**:  
    - モノラルダウンミックス後、`20ms` フレーム（10msホップ）で短時間エネルギーとZCRを算出。10パーセンタイルを `noise_floor_dbfs` と推定し、`noise_floor_dbfs + 10.0 dB` 以上（かつ `-50 dBFS` 以上）を有声区間として抽出。有効発話時間が `5.0秒` 未満の場合は `ERR_INSUFFICIENT_SPEECH`（終了コード `2`）を返す。  
+   - **リップノイズ・ブレスの除外と学習（`cleaner.py`）**: Section 4.1 と同一の検出器で、リップノイズ（クリック）周辺のフレームと、`tilt > しきい値` かつ `level < 声の中央値 - 6dB` が `100ms` 以上続くブレス区間を VAD 有声区間から除外する（ピーク・クレストファクター・LTAS・歯擦音の偏りを防ぐ）。除外後の有効発話時間で `ERR_INSUFFICIENT_SPEECH` を判定する。
+   - しきい値の学習: `tilt_threshold_db` = 声フレーム（`tilt <= -6dB`）の tilt 95 パーセンタイル + `3dB`（`[-6, +6]` に制限）。`level_ceiling_dbfs` = ブレス区間レベルの 90 パーセンタイル + `3dB`（ブレスがない場合は 声の中央値 - 10dB）を、上限 声の中央値 - 6dB・下限 ノイズフロア + 6dB で制限。`hangover_ms` = 声の直後に現れる `100ms` 未満のブレス状区間（語尾の無声子音）の長さの 90 パーセンタイル + `10ms`（`[40, 150]ms`、該当なしは `80ms`）。
+   - 抑制量はプリセットで決める（`declick` / `breath` の `max_reduction_db`）: `clear_broadcast` 12 / 9 dB、`natural_flat` 9 / 6 dB、`warm_podcast` 6 / 4 dB（囁き声・ASMR では小さい声と意図的な口元の音を守るため控えめ）。
+   - NumPy 非搭載環境でも標準ライブラリのみで同一結果を返す（Biquad は NumPy 版では周波数応答の乗算、標準ライブラリ版では DF2T の逐次計算）。
 2. **スペクトル・F0・ダイナミクス・歯擦音解析**:  
    - 4096点ハニング窓FFTによるLTAS算出、1/3オクターブバンド偏差からの最大8バンドPEQ自動フィッティング（ゲイン補正60%スケーリング、`[-6.0, +6.0] dB` 制限）。  
    - 自己相関法による \$F\_0\$ 中央値からの HPF カットオフ算出（\$F\_0 \\times 0.72\$、`65Hz〜110Hz` 制限）。  

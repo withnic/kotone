@@ -34,7 +34,8 @@
 |                                  v                                    |
 |  +-----------------------------------------------------------------+  |
 |  | Core DSP Engine (plugin/src/dsp/)  [Pure C++17 / Zero-Alloc]    |  |
-|  |  InputGain -> HPF -> 8-Band PEQ -> DeEsser -> Comp -> Makeup     |  |
+|  |  InputGain -> VoiceCleaner (Declick + Breath) -> HPF -> 8-Band   |  |
+|  |  PEQ -> DeEsser -> Comp -> Makeup                                |  |
 |  |  -> Lookahead Brickwall Limiter -> Hard Clamp & NaN Guard        |  |
 |  +-----------------------------------------------------------------+  |
 +-----------------------------------------------------------------------+
@@ -55,7 +56,7 @@
    - **OBSプロパティUI設計**:  
      - `profile_select`（`OBS_COMBO_TYPE_LIST`）: 内蔵プリセット3種 ＋ `profiles/` 内の全ユーザープロファイル（上限なし、5パターンでも20パターンでも自動追加）を列挙。変更コールバック（`obs_property_set_modified_callback`）により選択瞬間にロックフリーでDSPへ反映。  
      - `refresh_profiles_btn`（`OBS_PROPERTY_BUTTON`）: フォルダ内のプロファイル一覧を再スキャンしドロップダウンを更新。  
-     - `mix_percent`（スライダー `0.0〜100.0%`）、`output_makeup_trim_db`（スライダー `-12.0〜+12.0 dB`）、`limiter_ceiling_dbfs`（スライダー `-12.0〜-0.1 dBFS`）、`bypass`（チェックボックス）。  
+     - `mix_percent`（スライダー `0.0〜100.0%`）、`output_makeup_trim_db`（スライダー `-12.0〜+12.0 dB`）、`limiter_ceiling_dbfs`（スライダー `-12.0〜-0.1 dBFS`）、`declick_amount_percent`（リップノイズ除去量 `0〜100%`）、`breath_amount_percent`（ブレス抑制量 `0〜100%`）、`bypass`（チェックボックス）。  
      - **プロファイル保存グループ（`OBS_GROUP_NORMAL`）**:  
        - `new_profile_name`（`OBS_TEXT_DEFAULT`）: 新規保存用の名前入力欄（例: `普段トーク`, `ゲーム配信`, `囁き声配信`）。  
        - `save_new_profile_btn`（`OBS_PROPERTY_BUTTON`）: 現在の設定＋スライダー調整値を `new_profile_name` の名前で新規JSON保存し、一覧へ追加・選択切替する。  
@@ -87,6 +88,7 @@ kotone/
 │   │       ├── dsp_types.hpp          # パラメーター構造体・定数・クランプ関数
 │   │       ├── biquad.hpp             # Biquadフィルタ（HPF / PEQ、double内部精度）
 │   │       ├── dynamics.hpp           # De-Esser / Stereo-Linked Comp / Lookahead Limiter
+│   │       ├── voice_cleaner.hpp      # リップノイズ除去 + ブレス抑制（固定2ms先読み・検出定数）
 │   │       ├── dsp_engine.hpp         # マルチチャンネル統合DSPパイプライン & スロット管理
 │   │       └── profile_loader.hpp     # 純粋C++17 JSONパーサ・シリアライザ・マルチプロファイル管理
 │   ├── src/
@@ -94,6 +96,7 @@ kotone/
 │   │   │   ├── dsp_types.cpp
 │   │   │   ├── biquad.cpp
 │   │   │   ├── dynamics.cpp
+│   │   │   ├── voice_cleaner.cpp
 │   │   │   └── dsp_engine.cpp
 │   │   ├── profile/
 │   │   │   └── profile_loader.cpp
@@ -108,17 +111,21 @@ kotone/
 │       ├── test_main.cpp              # ゼロ依存・決定論的C++単体テストランナー（CLIプロファイル検証モード付）
 │       ├── test_dsp_limiter.cpp       # 声割れ防止（天井値保証）・過大入力・NaNガード検証
 │       ├── test_dsp_eq_comp.cpp       # HPF/PEQ周波数応答・ステレオリンクコンプ圧縮特性検証
-│       └── test_profile_loader.cpp    # JSONパース・名前付き保存/上書き・一覧スキャン・日本語パス検証
+│       ├── test_profile_loader.cpp    # JSONパース・名前付き保存/上書き・一覧スキャン・日本語パス検証
+│       └── test_voice_cleaner.cpp     # リップノイズ除去・ブレス抑制・透過性・JSON互換検証
 └── profiler/
     ├── pyproject.toml                 # Pythonプロジェクト定義（pytest設定含む）
+    ├── analyze_voice.bat              # Windows ドラッグ＆ドロップ起動（wizard）
     ├── kotone_profiler/
     │   ├── __init__.py
     │   ├── cli.py                     # argparse CLIエントリーポイント（--name 対応）
     │   ├── wav_io.py                  # WAV読込（16/24/32bit PCM & Float対応）
     │   ├── analyzer.py                # VAD・F0推定・LTAS・ダイナミクス・歯擦音解析
+│   ├── cleaner.py                 # リップノイズ・ブレス検出（C++と同一）・除外・しきい値学習
     │   └── optimizer.py               # DSPパラメーター最適化＆JSONスキーマ出力
     └── tests/
         ├── test_analyzer.py           # 合成音声によるVAD・F0・スペクトル解析テスト
+        ├── test_cleaner.py            # リップノイズ・ブレス検出・解析除外・学習しきい値テスト
         └── test_cli_e2e.py            # WAV入力 -> JSON生成 -> C++バイナリ検証E2Eテスト
 ```
 
@@ -155,7 +162,11 @@ kotone/
    - 同名保存時の自動連番サフィックス（`_2`）付与、禁止文字（`ゲーム/配信:用`）の安全サニタイズ、既存プロファイルの上書き保存（`save_profile_overwrite()`）、および破損JSON混在時のスキップ耐性を検証する。  
 5. **異常入力・スレッド安全性テスト**:  
    - `NaN` / `Inf` 入力からの `0.0f` 復旧、境界値クランプ、および別スレッドからの1000回連続プロファイル切替＋並行 `process()` 実行で競合・クラッシュが起きないことを検証する。  
-6. **CLIプロファイル検証モード（`kotone_tests --verify-profile <path>`）**:  
+6. **Voice Cleaner（リップノイズ除去・ブレス抑制）テスト**:
+   - 無効時・有効時とも、定常の有声音が固定 `2.0ms`（48kHz で 96 サンプル）遅延のみで透過すること（誤差 `1e-6` 以下、クリック検出 0 件）。
+   - 孤立したクリックをすべて検出し、高域エネルギーを `8dB` 以上減衰させ、クリック以外の区間は無加工で通すこと。滑らかな発声の立ち上がり・定常ノイズではクリックを誤検出しないこと。
+   - 高域寄りのブレス状ノイズ（-48dBFS）が `7〜9.5dB` 抑制され、前後の有声区間は `±0.2dB` 以内で保たれること。`input_gain_db` に追従するしきい値、UI の抑制量スライダー、schema `1.0.0` 互換（無効扱い）、往復シリアライズ、クランプ、8kHz〜192kHz での有限出力を検証する。
+7. **CLIプロファイル検証モード（`kotone_tests --verify-profile <path>`）**:  
    - Python側E2Eテストから呼び出せる検証モードを実装する。
 
 ### 5.2 Python プロファイラーテスト（`pytest`）
