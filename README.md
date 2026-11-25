@@ -189,4 +189,5 @@ python -m kotone_profiler analyze \
 ## ライセンス
 
 - 本リポジトリのソースコードは **MIT License**（[LICENSE](LICENSE)）のもとで公開されています。
+- 配布用の `kotone-profiler-windows-x64.zip` には、Python 公式の埋め込み用 Python（Windows embeddable package）を無改変で同梱しています。Python は **Python Software Foundation License**（同梱物の一部は各ライセンス）のもとで配布されており、ライセンス全文は ZIP 内の `python/LICENSE.txt` にあります。
 - なお、OBS Studio の `libobs`（GNU General Public License v2.0 or later）とリンクしてビルド・配布される OBS プラグインバイナリ（`kotone.dll` / `kotone.so`）は、`libobs` のライセンス条件（GPL-2.0-or-later）に準拠して配布されます。
