@@ -128,7 +128,7 @@ sudo cmake --install build-linux-obs --prefix /usr
 
 ### Step 1: シーン別ドライ音声の録音とプロファイル生成（`kotone-profiler`）
 
-素のマイク入力をシーン別に 30 秒〜3 分程度 WAV（16/24/32-bit PCM または 32-bit Float）で録音し、プロファイル JSON を生成します。
+素のマイク入力をシーン別に 30 秒〜1 分ほど（息継ぎが入る普段どおりの話し方で。長くても問題ありません）WAV（16/24/32-bit PCM または 32-bit Float）で録音し、プロファイル JSON を生成します。
 
 - **かんたん方法（Windows ドラッグ＆ドロップ）**:
   - Releases の `kotone-profiler-windows-x64.zip`（Python 同梱・インストール不要）を解凍するか、このリポジトリの [profiler/analyze_voice.bat](profiler/analyze_voice.bat)（PATH 上の Python 3.12+ を使用）を使います。

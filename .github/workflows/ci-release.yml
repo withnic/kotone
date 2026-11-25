@@ -339,8 +339,9 @@ jobs:
 
             ### 声のプロファイル作成（Windows・Python のインストール不要）
             1. `kotone-profiler-windows-x64.zip` をダウンロードして解凍します。
-            2. 録音した自分の声の `.wav` を `kotone-profiler\analyze_voice.bat` にドラッグ＆ドロップし、名前とプリセットを選びます。
-            3. OBS の琴音フィルタで「プロファイル一覧を再スキャン」を押して選びます（詳しくは同梱の `README.md`）。
+            2. マイクの素の声（OBS のフィルタを通さない音）を **30秒〜1分ほど** 普段どおりに話して WAV で録音します（息継ぎが入っていて大丈夫。長くても問題ありません）。
+            3. 録音した自分の声の `.wav` を `kotone-profiler\analyze_voice.bat` にドラッグ＆ドロップし、名前とプリセットを選びます。
+            4. OBS の琴音フィルタで「プロファイル一覧を再スキャン」を押して選びます（詳しくは同梱の `README.md`）。
 
             ### Linux 導入手順
             1. `kotone-linux-x86_64.tar.gz` を展開し、`sudo tar -xzf kotone-linux-x86_64.tar.gz -C /usr` で配置して OBS Studio を再起動します。

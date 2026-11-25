@@ -19,7 +19,7 @@
 ## 3\. システム全体ワークフロー
 
 1. **シーン別ドライ音声の収録（ユーザー操作）**:  
-   - 普段のトーク用・ゲーム配信用・囁き声用など、シーンごとに素のマイク音声を1〜3分録音してWAV保存する。  
+   - 普段のトーク用・ゲーム配信用・囁き声用など、シーンごとに素のマイク音声を30秒〜1分ほど（息継ぎを含む普段どおりの話し方で）録音してWAV保存する。解析に必要な有声区間は最低5秒で、それより長い録音も扱える。  
 2. **声質解析・名前付きプロファイル生成（`kotone-profiler` CLI）**:  
    - `kotone-profiler analyze --input whisper_voice.wav --name "囁き声配信" --preset warm_podcast --output-dir "%APPDATA%/obs-studio/plugin_config/kotone/profiles/"` を実行する（直接出力先を指定可能）。  
 3. **OBSプラグインでのマルチプロファイル切替＆保存（`kotone` OBS Audio Filter）**:  
