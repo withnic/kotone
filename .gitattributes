@@ -22,6 +22,9 @@ Makefile text eol=lf
 .gitignore text eol=lf
 .gitattributes text eol=lf
 
+# Windows batch scripts require CRLF
+*.bat text eol=crlf
+
 # Binary files
 *.wav binary
 *.dll binary
