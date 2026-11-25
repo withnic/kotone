@@ -1,6 +1,6 @@
 """Kotone (琴音) offline voice profiler package."""
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 
 class KotoneProfilerError(Exception):
