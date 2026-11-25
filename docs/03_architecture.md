@@ -115,7 +115,8 @@ kotone/
 │       └── test_voice_cleaner.cpp     # リップノイズ除去・ブレス抑制・透過性・JSON互換検証
 └── profiler/
     ├── pyproject.toml                 # Pythonプロジェクト定義（pytest設定含む）
-    ├── analyze_voice.bat              # Windows ドラッグ＆ドロップ起動（wizard）
+    ├── README.md                      # 配布 ZIP 同梱の利用者向け手順
+    ├── analyze_voice.bat              # Windows ドラッグ＆ドロップ起動（wizard、同梱の埋め込み Python を優先）
     ├── kotone_profiler/
     │   ├── __init__.py
     │   ├── cli.py                     # argparse CLIエントリーポイント（--name 対応）

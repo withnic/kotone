@@ -234,9 +234,71 @@ jobs:
           name: kotone-linux-x86_64
           path: release-assets/kotone-linux-x86_64.tar.gz
 
+  package-profiler-windows:
+    name: Package Profiler with Embedded Python (Windows x64)
+    needs: test
+    runs-on: windows-2022
+    env:
+      PY_EMBED_VERSION: "3.14.10"
+      PY_EMBED_SHA256: "90905e64a840557d8c1bc4f5b74db3d7ee85e3ffb217611cac1c7813acea4159"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Assemble profiler bundle with embeddable Python
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $ver = $env:PY_EMBED_VERSION
+          $zip = "python-$ver-embed-amd64.zip"
+          Invoke-WebRequest -Uri "https://www.python.org/ftp/python/$ver/$zip" -OutFile $zip
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          if ($hash -ne $env:PY_EMBED_SHA256) { throw "SHA256 mismatch for ${zip}: $hash" }
+
+          $root = "dist/kotone-profiler"
+          New-Item -ItemType Directory -Force -Path "$root/python" | Out-Null
+          Expand-Archive -Path $zip -DestinationPath "$root/python"
+          # Let the embedded interpreter import kotone_profiler from the bundle root (..)
+          $pth = Get-ChildItem "$root/python" -Filter "python*._pth" | Select-Object -First 1
+          if (-not $pth) { throw "._pth not found in embeddable package" }
+          Add-Content -Path $pth.FullName -Value ".."
+
+          Copy-Item -Recurse profiler/kotone_profiler "$root/kotone_profiler"
+          Get-ChildItem "$root/kotone_profiler" -Recurse -Directory -Filter "__pycache__" | Remove-Item -Recurse -Force
+          Copy-Item profiler/analyze_voice.bat "$root/"
+          Copy-Item profiler/README.md "$root/"
+
+      - name: Smoke test drag-and-drop launcher (no system Python on PATH)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $root = (Resolve-Path "dist/kotone-profiler").Path
+          & "$root/python/python.exe" scripts/make_smoke_wav.py smoke.wav
+          if ($LASTEXITCODE -ne 0) { throw "failed to synthesize smoke WAV" }
+          $env:APPDATA = Join-Path $PWD "smoke-appdata"
+          # Hide any system Python so only the bundled interpreter can be used
+          $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
+          "smoke`n1`n`n" | cmd /c dist\kotone-profiler\analyze_voice.bat "$PWD\smoke.wav"
+          $out = Join-Path $env:APPDATA "obs-studio/plugin_config/kotone/profiles/smoke.json"
+          if (-not (Test-Path $out)) { throw "profile JSON was not created: $out" }
+          Get-Content $out -TotalCount 5
+
+      - name: Package profiler ZIP
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force -Path release-assets | Out-Null
+          Compress-Archive -Path "dist/kotone-profiler" -DestinationPath "release-assets/kotone-profiler-windows-x64.zip" -Force
+
+      - name: Upload profiler artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kotone-profiler-windows-x64
+          path: release-assets/kotone-profiler-windows-x64.zip
+
   release:
     name: Create GitHub Release
-    needs: [build-obs-windows, build-obs-linux]
+    needs: [build-obs-windows, build-obs-linux, package-profiler-windows]
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     permissions:
@@ -253,12 +315,12 @@ jobs:
 
       - name: Package kotone-profiler Python CLI
         run: |
-          zip -r release-downloads/kotone-profiler-python.zip profiler README.md -x "*/__pycache__/*" "*/.pytest_cache/*"
+          zip -r release-downloads/kotone-profiler-python.zip profiler -x "*/__pycache__/*" "*/.pytest_cache/*"
 
       - name: Generate SHA256SUMS
         run: |
           cd release-downloads
-          sha256sum kotone-windows-x64.zip kotone-linux-x86_64.tar.gz kotone-profiler-python.zip > SHA256SUMS.txt
+          sha256sum kotone-windows-x64.zip kotone-linux-x86_64.tar.gz kotone-profiler-windows-x64.zip kotone-profiler-python.zip > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
       - name: Publish GitHub Release
@@ -273,10 +335,16 @@ jobs:
             2. 中の `obs-plugins` と `data` フォルダを `C:\Program Files\obs-studio\` に上書きコピーします（または `%ProgramData%\obs-studio\plugins\kotone\` へ配置）。
             3. OBS Studio を再起動し、マイクの「フィルタ」→「＋」→「琴音 (Kotone) 声質フィルタ」を追加します。
 
+            ### 声のプロファイル作成（Windows・Python のインストール不要）
+            1. `kotone-profiler-windows-x64.zip` をダウンロードして解凍します。
+            2. 録音した自分の声の `.wav` を `kotone-profiler\analyze_voice.bat` にドラッグ＆ドロップし、名前とプリセットを選びます。
+            3. OBS の琴音フィルタで「プロファイル一覧を再スキャン」を押して選びます（詳しくは同梱の `README.md`）。
+
             ### Linux 導入手順
             1. `kotone-linux-x86_64.tar.gz` を展開し、`sudo tar -xzf kotone-linux-x86_64.tar.gz -C /usr` で配置して OBS Studio を再起動します。
           files: |
             release-downloads/kotone-windows-x64.zip
             release-downloads/kotone-linux-x86_64.tar.gz
+            release-downloads/kotone-profiler-windows-x64.zip
             release-downloads/kotone-profiler-python.zip
             release-downloads/SHA256SUMS.txt
