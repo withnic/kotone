@@ -287,6 +287,8 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
+          # Drop bytecode caches written by the smoke test
+          Get-ChildItem "dist/kotone-profiler" -Recurse -Directory -Filter "__pycache__" | Remove-Item -Recurse -Force
           New-Item -ItemType Directory -Force -Path release-assets | Out-Null
           Compress-Archive -Path "dist/kotone-profiler" -DestinationPath "release-assets/kotone-profiler-windows-x64.zip" -Force
 
