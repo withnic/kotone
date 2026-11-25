@@ -16,6 +16,7 @@ OBS Studio 用カスタム音声フィルタプラグインおよび個人声質
 
 - **Windows 11**: `kotone-windows-x64.zip` を解凍し、中の `obs-plugins` と `data` フォルダを `C:\Program Files\obs-studio\`（または `%ProgramData%\obs-studio\plugins\kotone\`）へ配置して OBS Studio を再起動します。
 - **Linux**: `kotone-linux-x86_64.tar.gz` をダウンロードし、`sudo tar -xzf kotone-linux-x86_64.tar.gz -C /usr` で展開して OBS Studio を再起動します。
+- **声のプロファイル作成（Windows・Python のインストール不要）**: `kotone-profiler-windows-x64.zip` を解凍し、録音した自分の声の `.wav` を `kotone-profiler\analyze_voice.bat` にドラッグ＆ドロップします。手順は同梱の `README.md` を見てください。
 
 ---
 
@@ -35,6 +36,8 @@ kotone/
 │   ├── data/locale/                # 日本語 (ja-JP.ini) / 英語 (en-US.ini) UIローカライズ
 │   └── tests/                      # C++ 単体テストおよび `--verify-profile` CLI 検証ツール
 └── profiler/
+    ├── README.md                   # 配布 ZIP 同梱の利用者向け手順（短縮版）
+    ├── analyze_voice.bat           # Windows ドラッグ＆ドロップ起動（同梱 Python を優先）
     ├── pyproject.toml              # Python 声質解析CLIパッケージ設定
     ├── kotone_profiler/            # WAV読込・VAD/F0/LTAS/歯擦音解析・DSP最適化・CLI
     └── tests/                      # Python 単体テスト & C++ 結合 E2E テスト
@@ -128,7 +131,8 @@ sudo cmake --install build-linux-obs --prefix /usr
 素のマイク入力をシーン別に 30 秒〜3 分程度 WAV（16/24/32-bit PCM または 32-bit Float）で録音し、プロファイル JSON を生成します。
 
 - **かんたん方法（Windows ドラッグ＆ドロップ）**:
-  - 録音した `.wav` ファイルを [profiler/analyze_voice.bat](profiler/analyze_voice.bat) の上にドラッグ＆ドロップし、表示される案内どおりにプロファイル名とプリセット（1〜3）を選ぶだけで、OBS のプロファイルフォルダへ自動保存されます。
+  - Releases の `kotone-profiler-windows-x64.zip`（Python 同梱・インストール不要）を解凍するか、このリポジトリの [profiler/analyze_voice.bat](profiler/analyze_voice.bat)（PATH 上の Python 3.12+ を使用）を使います。
+  - 録音した `.wav` ファイルを `analyze_voice.bat` の上にドラッグ＆ドロップし、表示される案内どおりにプロファイル名とプリセット（1〜3）を選ぶだけで、OBS のプロファイルフォルダへ自動保存されます。
 - **コマンドラインで直接実行する場合**（`PYTHONPATH=profiler` または `pip install -e profiler` 後）:
 
 ```bash
@@ -185,4 +189,5 @@ python -m kotone_profiler analyze \
 ## ライセンス
 
 - 本リポジトリのソースコードは **MIT License**（[LICENSE](LICENSE)）のもとで公開されています。
+- 配布用の `kotone-profiler-windows-x64.zip` には、Python 公式の埋め込み用 Python（Windows embeddable package）を無改変で同梱しています。Python は **Python Software Foundation License**（同梱物の一部は各ライセンス）のもとで配布されており、ライセンス全文は ZIP 内の `python/LICENSE.txt` にあります。
 - なお、OBS Studio の `libobs`（GNU General Public License v2.0 or later）とリンクしてビルド・配布される OBS プラグインバイナリ（`kotone.dll` / `kotone.so`）は、`libobs` のライセンス条件（GPL-2.0-or-later）に準拠して配布されます。

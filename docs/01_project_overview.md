@@ -49,7 +49,7 @@
     - OBSホットキー登録（プロファイル1〜10番へのダイレクト切替ホットキー）。  
 - **個人声質解析CLIツール（`kotone-profiler` / Python 3.12+）**:  
   - WAV読み込み、ノイズフロア推定、VAD、リップノイズ・ブレス検出（解析からの除外と個人しきい値の学習）、F0・LTAS・ダイナミクス・歯擦音解析、`--name` 指定付きJSONプロファイル出力。
-  - Windows 向けドラッグ＆ドロップ起動（`profiler/analyze_voice.bat` → `wizard` サブコマンド）でプロファイル名とプリセットを対話入力し、OBS のプロファイルフォルダへ直接保存する。
+  - Windows 向けドラッグ＆ドロップ起動（`profiler/analyze_voice.bat` → `wizard` サブコマンド）でプロファイル名とプリセットを対話入力し、OBS のプロファイルフォルダへ直接保存する。リリースでは Python 公式の埋め込み用 Python（Windows embeddable package）を同梱した `kotone-profiler-windows-x64.zip` を配布し、利用者に Python のインストールを求めない。
 
 ### 4.2 スコープ外（Non-Goals / 将来プロジェクト「調べ」へ分離）
 
