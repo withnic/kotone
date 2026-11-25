@@ -36,3 +36,5 @@ Makefile text eol=lf
 *.zip binary
 *.gz binary
 *.png binary
+*.jpg binary
+*.jpeg binary

@@ -1,8 +1,12 @@
+<p align="center">
+  <img src="assets/image.jpg" alt="琴音 kotone" width="100%">
+</p>
+
 # 琴音（kotone）
 
 OBS Studio 用カスタム音声フィルタプラグインおよび個人声質解析ツール **「琴音（kotone）」**。
 
-事前に録音したドライ音声（WAV）を `kotone-profiler` で声質解析し、配信シーン別（普段トーク / ゲーム配信 / 囁き声配信 など上限なし）のプロファイル JSON を生成。OBS Studio プラグイン本体は純粋 C++17・外部依存ゼロのリアルタイム DSP チェーン（Input Trim → Butterworth HPF → 8-Band PEQ → De-Esser → Stereo-Linked Compressor → Makeup Gain → Lookahead Brickwall Limiter）により、音切れゼロで瞬時にプロファイルを切り替え、声割れ（クリッピング）を確実に防止します。
+事前に録音したドライ音声（WAV）を `kotone-profiler` で声質解析し、配信シーン別（普段トーク / ゲーム配信 / 囁き声配信 など上限なし）のプロファイル JSON を生成。OBS Studio プラグイン本体は純粋 C++17・外部依存ゼロのリアルタイム DSP チェーン（Input Trim → Voice Cleaner（リップノイズ除去・ブレス抑制） → Butterworth HPF → 8-Band PEQ → De-Esser → Stereo-Linked Compressor → Makeup Gain → Lookahead Brickwall Limiter）により、音切れゼロで瞬時にプロファイルを切り替え、声割れ（クリッピング）を確実に防止します。
 
 ---
 
