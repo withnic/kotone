@@ -87,6 +87,7 @@ inline void fail(const char* file, int line, const std::string& msg) {
 void run_dsp_limiter_tests(int& passed, int& failed);
 void run_dsp_eq_comp_tests(int& passed, int& failed);
 void run_profile_loader_tests(int& passed, int& failed);
+void run_voice_cleaner_tests(int& passed, int& failed);
 
 template <typename Fn> inline void run_case(const char* name, Fn&& fn, int& passed, int& failed) {
     ctx().current_test = name;

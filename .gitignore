@@ -1,3 +1,5 @@
+testdata/
+
 # Build directories
 build/
 build-*/

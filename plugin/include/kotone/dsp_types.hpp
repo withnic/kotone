@@ -17,6 +17,7 @@ constexpr uint32_t kSnapshotSlotCount = 16;
 constexpr size_t kMaxProfileFileBytes = 1024u * 1024u; // 1 MB
 constexpr size_t kMaxProfileNameChars = 64u;
 constexpr double kPi = 3.14159265358979323846;
+constexpr const char* kSchemaVersion = "1.1.0";
 
 enum class ErrorCode : uint32_t {
     Ok = 0,
@@ -62,6 +63,28 @@ struct DeEsserParams {
     float release_ms = 40.0f;
 };
 
+// Lip-noise (mouth click) remover. Detection constants are fixed (see voice_cleaner.hpp);
+// only the sensitivity and the high-band reduction are profile parameters.
+struct DeclickParams {
+    bool enabled = false;
+    float sensitivity_db = 12.0f;   // fast/slow 2nd-difference energy ratio threshold
+    float max_reduction_db = 12.0f; // high-band attenuation during a click
+    float crossover_hz = 2500.0f;   // only content above this is attenuated
+};
+
+// Breath suppressor. level_ceiling_dbfs is expressed at the profiler input (before
+// input_gain_db) so that profiles learned from a raw recording stay valid.
+struct BreathParams {
+    bool enabled = false;
+    float max_reduction_db = 9.0f;
+    float level_ceiling_dbfs = -40.0f; // 20 ms RMS below this may be breath
+    float tilt_threshold_db = 0.0f;    // 4 kHz / 400 Hz band power ratio above this is breathy
+    float min_duration_ms = 30.0f;
+    float hangover_ms = 80.0f; // protection after voiced speech (keeps trailing consonants)
+    float attack_ms = 25.0f;
+    float release_ms = 4.0f;
+};
+
 struct CompressorParams {
     bool enabled = true;
     float threshold_dbfs = -20.0f;
@@ -82,6 +105,8 @@ struct LimiterParams {
 struct DspParams {
     float input_gain_db = 0.0f;
     HpfParams hpf{};
+    DeclickParams declick{};
+    BreathParams breath{};
     std::array<EqBandParams, kNumEqBands> eq_bands{};
     DeEsserParams deesser{};
     CompressorParams compressor{};
@@ -92,6 +117,8 @@ struct UiOverrides {
     float mix_percent = 100.0f;
     float output_makeup_trim_db = 0.0f;
     float limiter_ceiling_dbfs = -1.0f;
+    float declick_amount_percent = 100.0f; // scales declick.max_reduction_db
+    float breath_amount_percent = 100.0f;  // scales breath.max_reduction_db
 };
 
 struct AnalysisMetrics {
@@ -107,7 +134,7 @@ struct AnalysisMetrics {
 };
 
 struct VoiceProfile {
-    std::string schema_version = "1.0.0";
+    std::string schema_version = "1.1.0";
     std::string profile_name = "Neutral Safe";
     std::string created_at;
     std::string updated_at;

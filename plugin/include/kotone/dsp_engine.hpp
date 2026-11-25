@@ -3,6 +3,7 @@
 #include "kotone/biquad.hpp"
 #include "kotone/dsp_types.hpp"
 #include "kotone/dynamics.hpp"
+#include "kotone/voice_cleaner.hpp"
 
 #include <array>
 #include <atomic>
@@ -20,6 +21,7 @@ struct DspConfigSnapshot {
     std::array<BiquadCoeffs, 2> hpf_coeffs{};
     std::array<BiquadCoeffs, kNumEqBands> eq_coeffs{};
     BiquadCoeffs deesser_sc_coeffs{};
+    VoiceCleanerConfig cleaner{};
 
     uint32_t sample_rate = kDefaultSampleRate;
     float mix_ratio = 1.0f;
@@ -73,6 +75,7 @@ public:
     double last_limiter_gr_db() const noexcept {
         return last_lim_gr_db_.load(std::memory_order_relaxed);
     }
+    uint64_t click_events() const noexcept { return click_events_.load(std::memory_order_relaxed); }
     uint64_t non_finite_count() const noexcept {
         return non_finite_count_.load(std::memory_order_relaxed);
     }
@@ -98,6 +101,7 @@ private:
     std::array<BiquadState, kMaxChannels> hpf_stage1_{};
     std::array<BiquadState, kMaxChannels> hpf_stage2_{};
     std::array<std::array<BiquadState, kNumEqBands>, kMaxChannels> eq_states_{};
+    VoiceCleaner cleaner_{};
     DeEsser deesser_{};
     Compressor compressor_{};
     LookaheadLimiter limiter_{};
@@ -109,6 +113,7 @@ private:
 
     std::atomic<double> last_comp_gr_db_{0.0};
     std::atomic<double> last_lim_gr_db_{0.0};
+    std::atomic<uint64_t> click_events_{0};
     std::atomic<uint64_t> non_finite_count_{0};
 };
 

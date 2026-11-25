@@ -110,6 +110,23 @@ void clamp_dsp_params(DspParams& params, uint32_t sample_rate) noexcept {
         params.hpf.slope_db_per_oct = 24;
     }
 
+    const float crossover_max = std::min(8000.0f, static_cast<float>(fs) * 0.4f);
+    params.declick.sensitivity_db = clamp_float(params.declick.sensitivity_db, 6.0f, 30.0f, 12.0f);
+    params.declick.max_reduction_db =
+        clamp_float(params.declick.max_reduction_db, 0.0f, 24.0f, 12.0f);
+    params.declick.crossover_hz = clamp_float(
+        params.declick.crossover_hz, std::min(1000.0f, crossover_max), crossover_max, 2500.0f);
+
+    params.breath.max_reduction_db = clamp_float(params.breath.max_reduction_db, 0.0f, 24.0f, 9.0f);
+    params.breath.level_ceiling_dbfs =
+        clamp_float(params.breath.level_ceiling_dbfs, -80.0f, -12.0f, -40.0f);
+    params.breath.tilt_threshold_db =
+        clamp_float(params.breath.tilt_threshold_db, -12.0f, 12.0f, 0.0f);
+    params.breath.min_duration_ms = clamp_float(params.breath.min_duration_ms, 0.0f, 200.0f, 30.0f);
+    params.breath.hangover_ms = clamp_float(params.breath.hangover_ms, 0.0f, 500.0f, 80.0f);
+    params.breath.attack_ms = clamp_float(params.breath.attack_ms, 1.0f, 200.0f, 25.0f);
+    params.breath.release_ms = clamp_float(params.breath.release_ms, 0.5f, 100.0f, 4.0f);
+
     for (uint32_t i = 0; i < kNumEqBands; ++i) {
         EqBandParams& band = params.eq_bands[i];
         band.index = static_cast<int>(i);
@@ -150,6 +167,10 @@ void clamp_ui_overrides(UiOverrides& overrides) noexcept {
         clamp_float(overrides.output_makeup_trim_db, -12.0f, 12.0f, 0.0f);
     overrides.limiter_ceiling_dbfs =
         clamp_float(overrides.limiter_ceiling_dbfs, -12.0f, -0.1f, -1.0f);
+    overrides.declick_amount_percent =
+        clamp_float(overrides.declick_amount_percent, 0.0f, 100.0f, 100.0f);
+    overrides.breath_amount_percent =
+        clamp_float(overrides.breath_amount_percent, 0.0f, 100.0f, 100.0f);
 }
 
 std::string truncate_utf8(const std::string& input, size_t max_codepoints) {
@@ -182,7 +203,7 @@ std::string truncate_utf8(const std::string& input, size_t max_codepoints) {
 
 void clamp_voice_profile(VoiceProfile& profile, uint32_t sample_rate) {
     if (profile.schema_version.empty()) {
-        profile.schema_version = "1.0.0";
+        profile.schema_version = kSchemaVersion;
     }
     profile.profile_name = truncate_utf8(profile.profile_name, kMaxProfileNameChars);
     clamp_dsp_params(profile.dsp_params, sample_rate);
@@ -191,7 +212,7 @@ void clamp_voice_profile(VoiceProfile& profile, uint32_t sample_rate) {
 
 VoiceProfile make_default_neutral_profile() {
     VoiceProfile p;
-    p.schema_version = "1.0.0";
+    p.schema_version = kSchemaVersion;
     p.profile_name = "Neutral Safe";
     p.target_preset = "neutral_safe";
 
@@ -237,6 +258,10 @@ VoiceProfile make_default_neutral_profile() {
     p.ui_overrides.mix_percent = 100.0f;
     p.ui_overrides.output_makeup_trim_db = 0.0f;
     p.ui_overrides.limiter_ceiling_dbfs = -1.0f;
+
+    // Voice Cleaner stays off in the neutral profile (no learned thresholds available).
+    p.dsp_params.declick = DeclickParams{};
+    p.dsp_params.breath = BreathParams{};
 
     clamp_voice_profile(p, kDefaultSampleRate);
     return p;

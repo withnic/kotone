@@ -20,6 +20,7 @@ add_library(kotone_dsp STATIC
     plugin/src/dsp/dsp_types.cpp
     plugin/src/dsp/biquad.cpp
     plugin/src/dsp/dynamics.cpp
+    plugin/src/dsp/voice_cleaner.cpp
     plugin/src/dsp/dsp_engine.cpp
     plugin/src/profile/profile_loader.cpp
 )
@@ -49,6 +50,7 @@ if(KOTONE_BUILD_TESTS)
         plugin/tests/test_dsp_limiter.cpp
         plugin/tests/test_dsp_eq_comp.cpp
         plugin/tests/test_profile_loader.cpp
+        plugin/tests/test_voice_cleaner.cpp
     )
 
     target_link_libraries(kotone_tests PRIVATE kotone_dsp Threads::Threads)

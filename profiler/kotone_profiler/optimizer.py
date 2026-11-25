@@ -12,6 +12,16 @@ from typing import Any
 from .analyzer import EQ_CENTER_FREQS_HZ, AnalysisResult
 
 VALID_PRESETS = ("clear_broadcast", "warm_podcast", "natural_flat")
+SCHEMA_VERSION = "1.1.0"
+
+# Voice Cleaner depth per preset (dB). Whisper / ASMR (warm_podcast) stays gentle so that quiet
+# unvoiced speech is never pushed down hard, and intentional mouth sounds survive.
+_CLEANER_DEPTH_DB: dict[str, tuple[float, float]] = {
+    # preset: (declick max_reduction_db, breath max_reduction_db)
+    "clear_broadcast": (12.0, 9.0),
+    "natural_flat": (9.0, 6.0),
+    "warm_podcast": (6.0, 4.0),
+}
 
 # Target 1/3-octave relative speech curves (dB relative to 500/1500 Hz mid anchor)
 _PRESET_TARGET_CURVES: dict[str, dict[float, float]] = {
@@ -86,7 +96,7 @@ def optimize_profile(
     preset: str = "clear_broadcast",
     target_lufs: float = -16.0,
 ) -> dict[str, Any]:
-    """Generate a validated, schema-1.0.0 VoiceProfile dictionary from AnalysisResult."""
+    """Generate a validated, schema-1.1.0 VoiceProfile dictionary from AnalysisResult."""
     if preset not in VALID_PRESETS:
         raise ValueError(f"Unsupported preset '{preset}'. Choose from: {', '.join(VALID_PRESETS)}")
 
@@ -189,11 +199,24 @@ def optimize_profile(
         deesser_threshold = _clamp(working_rms - 2.0, -36.0, -16.0, -24.0)
         deesser_max_red = 4.5 if preset != "natural_flat" else 3.0
 
-    # 5. Brickwall safety limiter (always active at -1.0 dBFS ceiling)
+    # 5. Voice Cleaner (lip-noise + breath) from learned per-speaker thresholds.
+    # Thresholds are expressed at the profiler input; the plugin shifts them by input_gain_db.
+    declick_depth, breath_depth = _CLEANER_DEPTH_DB[preset]
+    cl = analysis.cleaner
+    if cl is not None:
+        breath_ceiling = _clamp(cl.learned_level_ceiling_dbfs, -80.0, -12.0, -40.0)
+        breath_tilt = _clamp(cl.learned_tilt_threshold_db, -12.0, 12.0, 0.0)
+        breath_hangover = _clamp(cl.learned_hangover_ms, 0.0, 500.0, 80.0)
+    else:
+        breath_ceiling = _clamp(analysis.mean_rms_dbfs - 12.0, -80.0, -12.0, -40.0)
+        breath_tilt = 0.0
+        breath_hangover = 80.0
+
+    # 6. Brickwall safety limiter (always active at -1.0 dBFS ceiling)
     ceiling_dbfs = -1.0
 
     return {
-        "schema_version": "1.0.0",
+        "schema_version": SCHEMA_VERSION,
         "profile_name": _truncate_profile_name(profile_name),
         "created_at": now_iso,
         "updated_at": now_iso,
@@ -202,6 +225,8 @@ def optimize_profile(
             "mix_percent": 100.0,
             "output_makeup_trim_db": 0.0,
             "limiter_ceiling_dbfs": ceiling_dbfs,
+            "declick_amount_percent": 100.0,
+            "breath_amount_percent": 100.0,
         },
         "analysis_metrics": {
             "sample_rate_hz": sr,
@@ -219,6 +244,22 @@ def optimize_profile(
                 "enabled": True,
                 "cutoff_hz": _round_num(hpf_cutoff_hz, 2),
                 "slope_db_per_oct": 24,
+            },
+            "declick": {
+                "enabled": True,
+                "sensitivity_db": 12.0,
+                "max_reduction_db": declick_depth,
+                "crossover_hz": 2500.0,
+            },
+            "breath": {
+                "enabled": True,
+                "max_reduction_db": breath_depth,
+                "level_ceiling_dbfs": _round_num(breath_ceiling, 2),
+                "tilt_threshold_db": _round_num(breath_tilt, 2),
+                "min_duration_ms": 30.0,
+                "hangover_ms": _round_num(breath_hangover, 1),
+                "attack_ms": 25.0,
+                "release_ms": 4.0,
             },
             "eq_bands": eq_bands,
             "deesser": {

@@ -21,6 +21,8 @@ constexpr const char* kPropRefreshBtn = "refresh_profiles_btn";
 constexpr const char* kPropMixPercent = "mix_percent";
 constexpr const char* kPropMakeupTrimDb = "output_makeup_trim_db";
 constexpr const char* kPropLimiterCeiling = "limiter_ceiling_dbfs";
+constexpr const char* kPropDeclickAmount = "declick_amount_percent";
+constexpr const char* kPropBreathAmount = "breath_amount_percent";
 constexpr const char* kPropBypass = "bypass";
 constexpr const char* kPropSaveGroup = "profile_save_group";
 constexpr const char* kPropNewProfileName = "new_profile_name";
@@ -178,6 +180,9 @@ UiOverrides read_overrides_from_settings(obs_data_t* settings) {
     ov.output_makeup_trim_db = static_cast<float>(obs_data_get_double(settings, kPropMakeupTrimDb));
     ov.limiter_ceiling_dbfs =
         static_cast<float>(obs_data_get_double(settings, kPropLimiterCeiling));
+    ov.declick_amount_percent =
+        static_cast<float>(obs_data_get_double(settings, kPropDeclickAmount));
+    ov.breath_amount_percent = static_cast<float>(obs_data_get_double(settings, kPropBreathAmount));
     clamp_ui_overrides(ov);
     return ov;
 }
@@ -187,6 +192,9 @@ void write_overrides_to_settings(obs_data_t* settings, const UiOverrides& ov) {
     obs_data_set_double(settings, kPropMakeupTrimDb, static_cast<double>(ov.output_makeup_trim_db));
     obs_data_set_double(settings, kPropLimiterCeiling,
                         static_cast<double>(ov.limiter_ceiling_dbfs));
+    obs_data_set_double(settings, kPropDeclickAmount,
+                        static_cast<double>(ov.declick_amount_percent));
+    obs_data_set_double(settings, kPropBreathAmount, static_cast<double>(ov.breath_amount_percent));
 }
 
 // ============================================================================
@@ -438,6 +446,8 @@ void kotone_get_defaults(obs_data_t* settings) {
     obs_data_set_default_string(settings, kPropProfileSelect, kDefaultProfileId);
     obs_data_set_default_double(settings, kPropMixPercent, 100.0);
     obs_data_set_default_double(settings, kPropMakeupTrimDb, 0.0);
+    obs_data_set_default_double(settings, kPropDeclickAmount, 100.0);
+    obs_data_set_default_double(settings, kPropBreathAmount, 100.0);
     obs_data_set_default_double(settings, kPropLimiterCeiling, -1.0);
     obs_data_set_default_bool(settings, kPropBypass, false);
     obs_data_set_default_string(settings, kPropNewProfileName, "");
@@ -599,6 +609,14 @@ obs_properties_t* kotone_get_properties(void* data) {
         props, kPropLimiterCeiling, obs_module_text("Kotone.Prop.LimiterCeilingDbfs"), -12.0, -0.1,
         0.1);
     obs_property_float_set_suffix(ceiling_slider, " dBFS");
+
+    obs_property_t* declick_slider = obs_properties_add_float_slider(
+        props, kPropDeclickAmount, obs_module_text("Kotone.Prop.DeclickAmount"), 0.0, 100.0, 1.0);
+    obs_property_float_set_suffix(declick_slider, " %");
+
+    obs_property_t* breath_slider = obs_properties_add_float_slider(
+        props, kPropBreathAmount, obs_module_text("Kotone.Prop.BreathAmount"), 0.0, 100.0, 1.0);
+    obs_property_float_set_suffix(breath_slider, " %");
 
     obs_properties_add_bool(props, kPropBypass, obs_module_text("Kotone.Prop.Bypass"));
 

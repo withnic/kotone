@@ -116,12 +116,22 @@ def test_cli_japanese_profile_cpp_e2e(
     assert b"\r" not in raw_bytes
 
     data = json.loads(raw_bytes.decode("utf-8"))
-    assert data["schema_version"] == "1.0.0"
+    assert data["schema_version"] == "1.1.0"
     assert data["profile_name"] == profile_name
     assert data["target_preset"] == preset
     assert len(data["dsp_params"]["eq_bands"]) == 8
     assert data["ui_overrides"]["mix_percent"] == 100.0
+    assert data["ui_overrides"]["breath_amount_percent"] == 100.0
+    assert data["ui_overrides"]["declick_amount_percent"] == 100.0
     assert data["dsp_params"]["limiter"]["ceiling_dbfs"] == -1.0
+    assert data["dsp_params"]["declick"]["enabled"] is True
+    breath = data["dsp_params"]["breath"]
+    assert breath["enabled"] is True
+    assert -80.0 <= breath["level_ceiling_dbfs"] <= -12.0
+    assert -12.0 <= breath["tilt_threshold_db"] <= 12.0
+    # Whisper preset must stay gentle so quiet speech is never pushed down hard
+    if preset == "warm_podcast":
+        assert breath["max_reduction_db"] <= 4.0
 
     # Cross-language E2E verification with C++ kotone_tests --verify-profile
     cpp_proc = subprocess.run(
@@ -173,3 +183,32 @@ def test_cli_exit_codes_on_error_inputs(tmp_path: Path) -> None:
     )
     assert proc_bad.returncode == 1
     assert "ERR_INVALID_WAV" in proc_bad.stderr
+
+
+def test_cli_wizard_interactive_flow(tmp_path: Path) -> None:
+    """Verify drag-and-drop wizard mode reads Japanese input and generates valid JSON."""
+    samples = synthesize_voice(sample_rate=48000, voiced_sec=5.5, silence_sec=1.5)
+    wav_path = write_wav_file(tmp_path / "sample.wav", [samples], sample_rate=48000)
+    out_dir = tmp_path / "obs_profiles"
+
+    env = os.environ.copy()
+    existing_py = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = (
+        f"{PROFILER_ROOT}{os.pathsep}{existing_py}" if existing_py else str(PROFILER_ROOT)
+    )
+    env["PYTHONUTF8"] = "1"
+    proc = subprocess.run(
+        [sys.executable, "-m", "kotone_profiler", "wizard", str(wav_path), "-d", str(out_dir)],
+        input="雑談テスト\n2\n",
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env=env,
+        check=False,
+    )
+    assert proc.returncode == 0, f"wizard failed: {proc.stdout}\n{proc.stderr}"
+    out_json = out_dir / "雑談テスト.json"
+    assert out_json.is_file()
+    data = json.loads(out_json.read_text(encoding="utf-8"))
+    assert data["profile_name"] == "雑談テスト"
+    assert data["target_preset"] == "warm_podcast"
